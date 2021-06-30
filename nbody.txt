@@ -1,0 +1,155 @@
+/**
+ * @file      nbody.txt
+ *
+ * @author    Peter Lukac \n
+ *            Faculty of Information Technology \n
+ *            Brno University of Technology \n
+ *            xlukac11@stud.fit.vutbr.cz
+ *
+ * @brief     PCG Assignment 2
+ *            N-Body simulation in ACC
+ *
+ * @version   2021
+ *
+ * @date      11 November  2020, 11:22 (created) \n
+ * @date      29 November  2020, 11:37 (revised) \n
+ *
+ */
+
+
+
+Krok 1: základní implementace
+===============================================================================
+Velikost dat    	čas [s]
+     1024             0.974000
+ 2 * 1024             1.909000
+ 3 * 1024             2.835000
+ 4 * 1024             3.717000
+ 5 * 1024             4.605000
+ 6 * 1024             5.514000
+ 7 * 1024             12.486000
+ 8 * 1024             13.950000
+ 9 * 1024             16.208000
+10 * 1024             17.774000
+11 * 1024             19.806000
+12 * 1024             21.755000
+13 * 1024             23.034000
+14 * 1024             36.950000
+15 * 1024             40.055000
+16 * 1024             42.820000
+17 * 1024             44.731000
+18 * 1024             47.941000
+19 * 1024             51.202000
+20 * 1024             69.828000
+21 * 1024             73.047000
+22 * 1024             77.650000
+23 * 1024             81.438000
+24 * 1024             85.127000
+25 * 1024             88.869000
+26 * 1024             91.961000
+27 * 1024             117.359000
+28 * 1024             123.198000
+29 * 1024             127.346000
+30 * 1024             131.582000
+
+Vyskytla se nějaká anomálie v datech
+Pokud ano, vysvětlete:
+
+
+Krok 2: optimalizace kódu
+===============================================================================
+Došlo ke zrychlení?
+
+Áno: ~2x
+
+Velikost dat    	čas [s]
+     1024             0.490000
+ 2 * 1024             0.938000
+ 3 * 1024             1.423000
+ 4 * 1024             1.791000
+ 5 * 1024             2.230000
+ 6 * 1024             2.666000
+ 7 * 1024             5.927000
+ 8 * 1024             6.819000
+ 9 * 1024             7.788000
+10 * 1024             8.633000
+11 * 1024             9.671000
+12 * 1024             10.543000
+13 * 1024             11.376000
+14 * 1024             17.806000
+15 * 1024             19.297000
+16 * 1024             20.729000
+17 * 1024             21.932000
+18 * 1024             23.589000
+19 * 1024             25.057000
+20 * 1024             33.815000
+21 * 1024             35.585000
+22 * 1024             37.670000
+23 * 1024             39.596000
+24 * 1024             41.796000
+25 * 1024             43.611000
+26 * 1024             45.485000
+27 * 1024             57.313000
+28 * 1024             60.050000
+29 * 1024             62.115000
+30 * 1024             64.453000 
+
+Popište dva hlavní důvody:
+
+1. Znížil sa počet prístupov do globálnej pamäte: 8320 -> 2688
+2. Znížil sa počet SP operácií: 2377M -> 1491M
+
+Porovnejte metriky s předchozím krokem:
+
+                                                  step1           step2
+               FLOP Efficiency(Peak Single)   4.87% - 5.15%       6.79%
+                    Multiprocessor Activity       98.91%          98.26%
+                   Global Load Transactions       8320            2688
+Floating Point Operations(Single Precision)       2377M           1491M
+
+
+Krok 3: Težiště
+===============================================================================
+Kolik kernelů je nutné použít k výpočtu?
+
+1. kernel kopíruje data
+2. kernel počíta jednu úroveň stromu, je volaný v cykle log(N)-krát
+
+Kolik další paměti jste museli naalokovat?
+
+Museli sme naalokovať rovnakú veľkosť pamäte ako pre Particles.
+
+Jaké je zrychelní vůči sekveční verzi?
+(provedu to smyčkou #pragma acc parallel loop seq)
+Zdůvodněte:
+
+Paralelná verzia - O(log(N)) bude vždy rýchlejšia ako sekvenčná - O(N) verzia so zrýchlením k*N/log(N)
+
+N       čas seq [s]        čas gang [s]
+1024    0.836000           0.101000
+2048    1.618000           0.111000
+4096    3.197000           0.122000
+8192    6.323000           0.132000
+16384   12.58500           0.149000
+
+
+
+Krok 4: analýza výkonu
+==============================================================================
+N        čas CPU [s]        čas GPU [s]    propustnost paměti [MB/s]    výkon [MFLOPS]      zrychlení [-]
+1024      2.92175            0.490000             994.4                     5673 (1.61%)         6
+2048      11.6984            0.938000            1949.7                   115939 (3.29%)        12
+4096      47.9535            1.791000            3971.6                   239632 (6.80%)        26
+
+8192      186                6.819000            4055.1                   247032 (7.01%)        27
+16384     747               20.729000            5292.4                   322798 (9.16%)        37
+32768     2991              69.850000            6266.9                   384116 (10.90%)       43
+65536     11967            279.182000            6290.1                   385878 (10.95%)       42
+
+131072    49104           1116.826000            6269.7                  (metric overflow)      44
+
+Od jakého počtu částic se vyplatí počítat na grafické kartě?
+
+V našom prípade sa to vyplatí v celom rozsahu dat.
+
+===============================================================================

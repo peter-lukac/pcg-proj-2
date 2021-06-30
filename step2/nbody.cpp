@@ -1,0 +1,165 @@
+/**
+ * @file      nbody.cpp
+ *
+ * @author    Peter Lukac \n
+ *            Faculty of Information Technology \n
+ *            Brno University of Technology \n
+ *            xlukac11@stud.fit.vutbr.cz
+ *
+ * @brief     PCG Assignment 2
+ *            N-Body simulation in ACC
+ *
+ * @version   2021
+ *
+ * @date      11 November  2020, 11:22 (created) \n
+ * @date      11 November  2020, 11:37 (revised) \n
+ *
+ */
+
+#include <math.h>
+#include <cfloat>
+#include "nbody.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                       Declare following structs / classes                                          //
+//                                  If necessary, add your own classes / routines                                     //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void calculate_velocity(Particles& restrict p_in, Particles& restrict p_out, const int N, const float dt){
+  #pragma acc parallel loop gang present(p_in, p_out)
+  for (int i = 0; i < N; i++) {
+
+    float tmp_vel_x = 0;
+    float tmp_vel_y = 0;
+    float tmp_vel_z = 0;
+
+    float pos_x = p_in.pos_x[i];
+    float pos_y = p_in.pos_y[i];
+    float pos_z = p_in.pos_z[i];
+
+    float vel_x = p_in.vel_x[i];
+    float vel_y = p_in.vel_y[i];
+    float vel_z = p_in.vel_z[i];
+
+    float weight = p_in.weight[i];
+
+    #pragma acc loop seq
+    for (int j = 0; j < N; j++) {
+      // Same For both
+      float dx = pos_x - p_in.pos_x[j];
+      float dy = pos_y - p_in.pos_y[j];
+      float dz = pos_z - p_in.pos_z[j];
+
+      // non coliding velocities
+      float r = sqrt(dx*dx + dy*dy + dz*dz);
+
+      float r3 = r * r * r + FLT_MIN;
+
+      float G_dt_r3 = -G * dt / r3;
+      float Fg_dt_m2_r = G_dt_r3 * p_in.weight[j];
+
+      float vx = Fg_dt_m2_r * dx;
+      float vy = Fg_dt_m2_r * dy;
+      float vz = Fg_dt_m2_r * dz;
+
+      // non coliding velocity
+      tmp_vel_x += (r > COLLISION_DISTANCE) ? vx : 0.0f;
+      tmp_vel_y += (r > COLLISION_DISTANCE) ? vy : 0.0f;
+      tmp_vel_z += (r > COLLISION_DISTANCE) ? vz : 0.0f;
+
+
+      // coliding velocities
+      vx = ((weight * vel_x - p_in.weight[j] * vel_x + 2 * p_in.weight[j] * p_in.vel_x[j]) /
+        (weight + p_in.weight[j])) - vel_x;
+      vy = ((weight * vel_y - p_in.weight[j] * vel_y + 2 * p_in.weight[j] * p_in.vel_y[j]) /
+        (weight + p_in.weight[j])) - vel_y;
+      vz = ((weight * vel_z - p_in.weight[j] * vel_z + 2 * p_in.weight[j] * p_in.vel_z[j]) /
+        (weight + p_in.weight[j])) - vel_z;
+
+
+      if (r > 0.0f && r < COLLISION_DISTANCE) {
+        tmp_vel_x += vx;
+        tmp_vel_y += vy;
+        tmp_vel_z += vz;
+      }
+    }
+    // update particle
+    p_out.vel_x[i] = p_in.vel_x[i] + tmp_vel_x;
+    p_out.vel_y[i] = p_in.vel_y[i] + tmp_vel_y;
+    p_out.vel_z[i] = p_in.vel_z[i] + tmp_vel_z;
+
+    p_out.pos_x[i] = p_in.pos_x[i] + p_out.vel_x[i] * dt;
+    p_out.pos_y[i] = p_in.pos_y[i] + p_out.vel_y[i] * dt;
+    p_out.pos_z[i] = p_in.pos_z[i] + p_out.vel_z[i] * dt;
+
+  }
+}
+
+
+/// Compute gravitation velocity
+void calculate_gravitation_velocity(const Particles& restrict p,
+                                    Velocities&      restrict tmp_vel,
+                                    const int        N,
+                                    const float      dt)
+{
+
+}// end of calculate_gravitation_velocity
+//----------------------------------------------------------------------------------------------------------------------
+
+void calculate_collision_velocity(const Particles& restrict p,
+                                  Velocities&      restrict tmp_vel,
+                                  const int        N,
+                                  const float      dt)
+{
+
+}// end of calculate_collision_velocity
+//----------------------------------------------------------------------------------------------------------------------
+
+/// Update particle position
+void update_particle(Particles& p,
+                     const Velocities&      tmp_vel,
+                     const int        N,
+                     const float      dt)
+{
+
+}// end of update_particle
+//----------------------------------------------------------------------------------------------------------------------
+
+
+
+/// Compute center of gravity
+float4 centerOfMassGPU(const Particles& p,
+                       const int        N)
+{
+
+  return {0.0f, 0.0f, 0.0f, 0.0f};
+}// end of centerOfMassGPU
+//----------------------------------------------------------------------------------------------------------------------
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Compute center of mass on CPU
+float4 centerOfMassCPU(MemDesc& memDesc)
+{
+  float4 com = {0 ,0, 0, 0};
+
+  for(int i = 0; i < memDesc.getDataSize(); i++)
+  {
+    // Calculate the vector on the line connecting points and most recent position of center-of-mass
+    const float dx = memDesc.getPosX(i) - com.x;
+    const float dy = memDesc.getPosY(i) - com.y;
+    const float dz = memDesc.getPosZ(i) - com.z;
+
+    // Calculate weight ratio only if at least one particle isn't massless
+    const float dw = ((memDesc.getWeight(i) + com.w) > 0.0f)
+                          ? ( memDesc.getWeight(i) / (memDesc.getWeight(i) + com.w)) : 0.0f;
+
+    // Update position and weight of the center-of-mass according to the weight ration and vector
+    com.x += dx * dw;
+    com.y += dy * dw;
+    com.z += dz * dw;
+    com.w += memDesc.getWeight(i);
+  }
+  return com;
+}// end of centerOfMassCPU
+//----------------------------------------------------------------------------------------------------------------------
